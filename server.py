@@ -1,56 +1,93 @@
 #coding=utf-8
-import SocketServer
+from SocketServer import ThreadingTCPServer, BaseRequestHandler, ThreadingMixIn, TCPServer
 import traceback 
+from shortuuid import uuid
+from datetime import datetime
+from config import SERVER_HOST, SERVER_PORT
 
-class MyServer(SocketServer.BaseRequestHandler):
+class MyTcpServer(ThreadingMixIn, TCPServer):
+    def __init__(self, server_address, RequestHandlerClass,):
+        TCPServer.__init__(self, server_address, RequestHandlerClass,)
+        self.conns = []
+
+    def get_all_conns(self):
+        return self.conns
+
+
+class MainServer():
+    def __init__(self):
+        self.server = None
+
+    def run(self):
+        self.server = MyTcpServer((SERVER_HOST,SERVER_PORT),MyRequestHandler)
+        self.server.serve_forever()
+
+    def stop(self):
+        self.server.shutdown()
+
+# class RoomManage():
+#     rooms = []
+
+#     def new():
+
+
+#         rooms.append({
+#             'id': uuid(),
+#             'created_time': datetime.now(),
+#             'server': server
+#             })
+
+
+#     def get_all_rooms():
+#         return rooms
+
+
+class MyRequestHandler(BaseRequestHandler):
+
     def handle(self):
-            conn = self.request
-            print '+++++++++++++++++'
-            print self.client_address
-            conn.sendall('我是多线程')
-            Flag = True
-            while Flag:
-                try:
-                    data = conn.recv(1024)
-                    print data
-                    if data == 'exit':
-                        Flag = False
-                    elif data == '0':
-                        conn.sendall('您输入的是0')
-                    else:
-                        conn.sendall('请重新输入.')
-                except Exception as e:
-                    traceback.print_exc()
-                    self.finsh()
+        self.handle_conn(self.request)
 
-if __name__ == '__main__':
-    server = SocketServer.ThreadingTCPServer(('127.0.0.1',9797),MyServer)
-    server.serve_forever()
+    def handle_conn(self, conn):
+        self.save_conn(conn)
+
+        Flag = True
+        while Flag:
+            try:
+                self.handle_msg(conn)
+            except Exception as e:
+                traceback.print_exc()
+                self.break_conn(conn)
+                Flag = False
 
 
-    # server.shutdown()
-    # server.server_close()
 
-# import socket, thread
+    def save_conn(self, conn):
+        self.server.conns.append({
+            'id': uuid(),
+            'created_time': datetime.now(),
+            'address': self.client_address,
+            'conn': conn})
 
-# class SocketServer():
+        print(str(self.client_address) + ' conn success! All:'+str(self.server.get_all_conns()))
+        conn.sendall('conn success! Your address is ' + str(self.client_address))
 
-#     BUF_SIZE = 1024
-#     host = '0.0.0.0'
-#     port = 8083
+    def handle_msg(self, conn):
+        data = conn.recv(1024)
+        print data
+        if data == 'exit':
+            Flag = False
+        elif data == '0':
+            conn.sendall('您输入的是0')
+        else:
+            conn.sendall('请重新输入.')
 
-#     def new(self):
-#         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#         server.bind((host, port))
-#         server.listen(5)
-#         thread.start_new_thread(self.listen_conn())
+        self.send_to_all(data)
 
-#     def listen_conn(self)
-#         while True: 
-#             client, address = server.accept() 
-#             data = client.recv(BUF_SIZE)
-#             print(data.decode())
-#             # client.close() #连接不断开，长连接
+    def break_conn(self, conn):
+        print(str(self.client_address) + ' conn break!')
+        conn.close()
 
-
-    
+    def send_to_all(self, data):
+        conns = self.server.get_all_conns()
+        for conn in conns:
+            conn['conn'].sendall(data)
